@@ -10,39 +10,36 @@
 -author("gillonb").
 
 %% API
--export([update/2,snapshot_read/1]).
+-export([update/3,snapshot_read/2,connect/1]).
 
 %% Function run at load of module
 -on_load(init/0).
-
-
-
-update(Key,Value) ->
+connect(Pid)->
+  Pid ! {connect,self()},
+  receive
+    {successfulConnect,T,PartitionList} -> io:format("Succesfully connected to DB at time ~p ~n",[T]);
+    _ -> io:format("not able to connect to datastore ~n")
+  end.
+update(Key,Value,PartitionList) ->
   %% Find in which datastore the Key is stored (HASH)
   %V = hash(Key),
-  Rem = Key rem 2, %pour simplifier j'ai juste fait le reste de la division par 2
-  if Rem == 1 ->
-    data1 ! {update,Key,Value},
-    io:format("Sending the following request ~p to ~p ~n ",[{update,Key,Value},'data1']);
-    true ->
-    data2 ! {update,Key,Value},
-    io:format("Sending the following request ~p to ~p ~n ",[{update,Key,Value},'data2'])
-  end,
+  Size = length(PartitionList),
+  Rem = (Key rem Size) - 1, %pour simplifier j'ai juste fait le reste de la division par 2
+  ToSend = lists:nth(Rem,PartitionList),
+  ToSend ! {update,Key,Value},
+  io:format("Sending the following request ~p to ~p ~n ",[{update,Key,Value},ToSend]),
   ok
 .
 
 
-snapshot_read(Key) ->
+snapshot_read(Key,PartitionList) ->
   T = os:timestamp(),
   %% Returns the list of Values read at that time snapshot
-  Rem = Key rem 2, %pour simplifier j'ai juste fait le reste de la division par 2
-  if Rem == 1 ->
-    data1 ! {read,T,Key},
-    io:format("Sending the following request ~p to ~p ~n ",[{read,T,Key},data1]);
-    true ->
-    data2 ! {read,T,Key},
-    io:format("Sending the following request ~p to ~p ~n ",[{read,T,Key},data2])
-  end,
+  Size = length(PartitionList),
+  Rem = (Key rem Size) - 1, %pour simplifier j'ai juste fait le reste de la division par 2
+  ToSend = lists:nth(Rem,PartitionList),
+  ToSend ! {read,T,Key},
+  io:format("Sending the following request ~p to ~p ~n ",[{read,T,Key},ToSend]),
   ok
 .
 
