@@ -9,10 +9,10 @@
 -author("Bastien Gillon").
 
 %% API export
--export([update/2,snapshot_read/2]).
+-export([start/0,core/1]).
 
 %% Function run at load of module
--on_load(init/0).
+%-on_load(init/0).
 
 
 %% Implemenation
@@ -24,30 +24,39 @@
 %%  'snapshot_read'
 %%
 
-update(Key,Value) ->
-  core ! {update,Key,Value},
-  ok
-.
+%update(Key,Value) ->
+%  core ! {update,Key,Value},
+%  ok
+%.
 
 
-snapshot_read(Snapshot_time,Key) ->
+%snapshot_read(Snapshot_time,Key) ->
   %% Returns the list of Values read at that time snapshot
-  core ! {read,Snapshot_time,Key}
+%  core ! {read,Snapshot_time,Key}
+%.
+start() ->
+  Dict1 = dict:new(),
+  Dict2 = dict:new(),
+  Data1 = spawn(datastore,core,[Dict1]),
+  register(data1,Data1),
+  Data2 = spawn(datastore,core,[Dict2]),
+  register(data2,Data2)
 .
 
 %% Handle update/read etc here. hidden from user.
-core(Store,ReadBuffer) ->
-  if length(ReadBuffer) /= 0 -> % check if we can reduce
-    io:format()
-  end,
+core(Store) ->
+%  if length(ReadBuffer) /= 0 -> % check if we can reduce
+%    io:format()
+%  end,
 
   io:format(""),
   receive
     {update,Key,Value} ->
       P = dict:find(Key,Store),
+      io:format("Received the following request from Transaction manager: ~p ~n",[{update,Key,Value}]),
       case P of
         {ok,OldHistory} -> % Value already present
-          NewHistory = append([{Value,os:timestamp()}],OldHistory), % put the new tuple in front a OldHistory to create new History
+          NewHistory = lists:append([{Value,os:timestamp()}],OldHistory), % put the new tuple in front a OldHistory to create new History
           NewStore = dict:store(Key,NewHistory,Store), % Erase old History by overwritting
           core(NewStore);
         error -> % new Value to be stored
@@ -56,21 +65,18 @@ core(Store,ReadBuffer) ->
       end;
     {read,Time,Key} -> % Foreach key in Keys return only valid data!
       P = dict:find(Key,Store),
+      io:format("Received the following request from Transaction manager: ~p ~n",[{read,Time,Key}]),
       case P of
         {ok,History} -> %
+          io:format("The values for ~p are ~p ~n",[Key,History]),
           T = os:timestamp(),
         if T > Time ->
             io:format("then");
           true ->
             io:format("else")
+        end
       end
-  end
+    end
 .
 
 %% Function launched at import module
-init() ->
-  Data1 = spawn(datastore,core,[dict:new()]),
-  register('data1',Data1),
-  Data2 = spawn(datastore,core,[dict:new()]),
-  register('data2',Data2)
-.
