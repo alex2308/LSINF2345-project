@@ -12,7 +12,7 @@
 -export([start/1,loop/1,connect/1]).
 
 %% Function run at load of module
--on_load(init/0).
+-on_load(init/1).
 
 
 %% Implemenation
@@ -33,10 +33,10 @@
 %snapshot_read(Snapshot_time,Key) ->
   %% Returns the list of Values read at that time snapshot
 %  loop ! {read,Snapshot_time,Key}
-%.
-init(PartitionList) ->
-  start(PartitionList),
-  ok.
+%init() ->
+%  {ok,PartitionList} = io:fread('enter the list of partitions you want to create', "~f~f~f").
+%  start(PartitionList),
+%  ok.
 start(PartitionList) ->
   Instantiation = fun(X) ->
     io:format("Creating partition ~p ~n",[X]),
