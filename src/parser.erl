@@ -9,45 +9,63 @@
 -author("Bastien Gillon").
 
 %% API
--export([start/1]).
+-export([start/1,execute/1]).
 
--import(tmanager,[snapshot_read/1,update/2]).
+execute(D) ->
+  case io:get_line(D, "") of
+    eof ->
+      io:format("DONE~n"),
+      file:close(D);
+    Line ->
+      Chars = string:split(string:trim(Line)," ",all),
+      case Chars of
+        ["up",Key,Value] ->
+          manager ! {update,Key,Value,self()};
+        ["read" | Keys] ->
+          manager ! {snapshot_read,Keys,self()};
+        ["gc"] ->
+          manager ! {gc,self()};
+        ["sleep",StrTime] ->
+          T = string:to_integer(StrTime),
+          case T of
+            {Time,Rest} ->
+              Done = timer:sleep(Time);
+            {error,Reason} ->
+              io:format("badarg sleep~n")
+          end,
+          self() ! {skip}
+      end,
+      receive
+        {ok} ->
+          io:format("ok~n"),
+          execute(D);
+        {ok,Values} ->
+          io:format("Values~n"),
+          execute(D);
+        {ok,gc} ->
+          io:format("GC ok~n"),
+          execute(D);
+        {skip} ->
+          execute(D);
+        Other ->
+          io:format("Unknown~n")
+      end
+  end
+.
 
-start(FileName) ->
+exec(FileName) ->
   io:format("Do read and execute \n"),
   File = file:open(FileName, [read]),
   case File of
     {ok,IODevice} ->
       io:format("File opened... \n"),
-      try execute_lines(IODevice)
-      after file:close(IODevice)
-      end;
-
+      IODevice;
     {error, Reason} ->
       io:format("Error opening file \n")
   end
 .
 
-execute_lines(Device) ->
-  case io:get_line(Device, "") of
-    eof  -> ok;
-    Line ->
-      Chars = string:split(Line, " "),
-      case Chars of
-        ["up",Key,Value] ->
-          io:format("Send update request for Key:~p and Value:~p \n",[Key,Value]),
-          tmanager:update(Key,Value);
-        ["read",T] ->
-          io:format("Send read request for Keys ");
-        ["gc"] ->
-          io:format("Do garbage collectin \n");
-        ["sleep",TimeStr] ->
-          Time = string:to_integer(TimeStr),
-          timer:sleep(Time), %% in milliseconds
-          io:format("Sleep \n");
-        Other ->
-          nil
-      end,
-    execute_lines(Device)
-  end
+start(Filename) ->
+  F = exec(Filename),
+  T = spawn(parser,execute,[F])
 .
