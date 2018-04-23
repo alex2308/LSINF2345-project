@@ -8,5 +8,6 @@ ebin/*.beam
 rel/example_project
 .concrete/DEV_MODE
 .rebar
-.idea/*
+.idea/
+src/*dump
 src/*beam
