@@ -9,63 +9,112 @@
 -author("Bastien Gillon").
 
 %% API
--export([start/1,execute/1]).
+-export([start/3,execute/2,write/1]).
 
-execute(D) ->
+
+
+%%
+%% Launch this file to process all transactions in a file
+start(Filename,TransactionManagerPid,OutFile) ->
+  F = exec(Filename),
+  File = file:open(OutFile, [write]),
+  case File of
+    {ok,IODevice} ->
+      io:format("File opened... \n"),
+      Out = IODevice;
+    {error, _Reason} ->
+      io:format("Error opening file \n"),
+      Out = none
+  end,
+  W = spawn(parser,write,[Out]),
+  _Temp = register(write,W),
+  _T = spawn(parser,execute,[F,TransactionManagerPid])
+.
+
+
+execute(D,TransactionManagerPid) ->
   case io:get_line(D, "") of
     eof ->
-      io:format("DONE~n"),
-      file:close(D);
+      file:close(D),
+      write ! {stop};
     Line ->
       Chars = string:split(string:trim(Line)," ",all),
       case Chars of
         ["up",Key,Value] ->
-          manager ! {update,Key,Value,self()};
+          TransactionManagerPid ! {update,Key,Value,self()};
         ["read" | Keys] ->
-          manager ! {snapshot_read,Keys,self()};
+          TransactionManagerPid ! {snapshot_read,Keys,self()};
         ["gc"] ->
-          manager ! {gc,self()};
+          TransactionManagerPid ! {gc,self()};
         ["sleep",StrTime] ->
           T = string:to_integer(StrTime),
           case T of
-            {Time,Rest} ->
-              Done = timer:sleep(Time);
-            {error,Reason} ->
-              io:format("badarg sleep~n")
+            {error,_Reason} ->
+              io:format("badarg sleep~n");
+            {Time,_Rest} ->
+              _Done = timer:sleep(Time)
           end,
           self() ! {skip}
       end,
       receive
         {ok} ->
-          io:format("ok~n"),
-          execute(D);
-        {ok,Values} ->
-          io:format("Values~n"),
-          execute(D);
+          write ! {w,ok},
+          execute(D,TransactionManagerPid);
         {ok,gc} ->
-          io:format("GC ok~n"),
-          execute(D);
+          write ! {w,ok},
+          execute(D,TransactionManagerPid);
+        {ok,Values} ->
+          write ! {writeList,Values},
+          execute(D,TransactionManagerPid);
         {skip} ->
-          execute(D);
-        Other ->
+          write ! {w,ok},
+          execute(D,TransactionManagerPid);
+        _Other ->
           io:format("Unknown~n")
       end
   end
 .
 
-exec(FileName) ->
+exec(InFileName) ->
   io:format("Do read and execute \n"),
-  File = file:open(FileName, [read]),
+  File = file:open(InFileName, [read]),
   case File of
     {ok,IODevice} ->
       io:format("File opened... \n"),
       IODevice;
-    {error, Reason} ->
+    {error, _Reason} ->
       io:format("Error opening file \n")
   end
 .
 
-start(Filename) ->
-  F = exec(Filename),
-  T = spawn(parser,execute,[F])
+
+
+write(Out) ->
+  receive
+    {w,Data} ->
+      io:fwrite(Out,"~p~n",[Data]),
+      write(Out);
+    {writeList,DataList} ->
+      format_list(DataList,Out),
+      write(Out);
+    {stop} ->
+      file:close(Out),
+      done
+  end
+.
+
+format_list(L,Out)
+  when is_list(L) ->
+    io:fwrite(Out,"[",[]),
+    fnl(L,Out),
+    io:fwrite(Out,"]~n",[])
+.
+
+fnl([H],Out) ->
+  io:fwrite(Out,"~s", [H]);
+fnl([H|T],Out) ->
+  io:fwrite(Out,"~s,", [H]),
+  fnl(T,Out);
+fnl([],_Out) ->
+  ok
 .

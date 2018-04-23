@@ -13,6 +13,8 @@
 -export([start/1,queries/2,response/1]).
 
 
+-import(datastore,[start/0]).
+
 
 hash(Key) ->
   erlang:phash2(Key)
@@ -20,10 +22,33 @@ hash(Key) ->
 
 
 start(Name) ->
+  case whereis(data1) of
+    undefined ->
+      io:format("Starting 2 datastores....."),
+      datastore:start(),
+      io:format("Running~n");
+    _Other ->
+      io:format("")
+  end,
+  case Name of
+    [H|_T] ->
+      Reg = H;
+    Other ->
+      Reg = Other
+  end,
   Dd = dict:new(),
   R = spawn(tmanager,response,[Dd]),
   Core = spawn(tmanager,queries,[0,R]),
-  register(Name,Core)
+  if is_atom(Reg) ->
+      register(Reg,Core),
+      _P = io:format("Transaction manager running and registered as ~p~n",[Reg]);
+    true ->
+      O = list_to_atom(Reg),
+      register(O,Core),
+      _P = io:format("Transaction manager running and registered as ~p~n",[O])
+  end,
+  io:format("NODE: ~p~n~n",[node()]),
+  done
 .
 
 %% Function that runs in a node and that treats client requests
@@ -55,7 +80,8 @@ queries(Counter,Handler) ->
       data1 ! {stop},
       data2 ! {stop},
       Handler ! {stop},
-      io:format("Stop query manager ~n")
+      io:format("Stop query manager ~n"),
+      exit('exit')
   end
 .
 

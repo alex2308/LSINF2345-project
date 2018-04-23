@@ -1,4 +1,3 @@
-## If any command is not implemented, return nil instead
 ok
 ok
 ok

@@ -99,7 +99,8 @@ tryEmpty(Buffer,Store) ->
               ResponsePid ! {ok,read,Uid,Index,Value}
           end;
         true -> %
-          lists:append([H],T)
+          NList = lists:append([H],T),
+          NList
       end,
       tryEmpty(T,Store)
   end

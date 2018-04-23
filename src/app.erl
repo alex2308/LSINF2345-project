@@ -9,11 +9,12 @@
 -author("Bastien Gillon").
 
 %% API
--export([start_service/0,stop_service/0,send_update/2,send_snapshotread/1,do_gc/0]).
+-export([start_local_service/0,stop_local_service/0,send_update/2,
+  send_snapshotread/1,do_gc/0,send_update_external/3,send_snapshotread_external/2]).
 
 
 %% Start 2 stores and 1 manager with name manager
-start_service() ->
+start_local_service() ->
   case whereis(manager) of
     undefined ->
       datastore:start(),
@@ -24,7 +25,7 @@ start_service() ->
   end
 .
 
-stop_service() ->
+stop_local_service() ->
   case whereis(manager) of
     undefined ->
       io:format("Service not running~n"),
@@ -34,6 +35,21 @@ stop_service() ->
   end
 .
 
+send_update_external(Node,Key,Value) ->
+  {manager,Node} ! {update,Key,Value,self()},
+  receive
+    {ok} ->
+      ok
+  end
+.
+
+send_snapshotread_external(Node,Keys) ->
+  {manager,Node} ! {snapshot_read,Keys,self()},
+  receive
+    {ok,Values} ->
+      Values
+  end
+.
 
 send_update(Key,Value) ->
   case whereis(manager) of

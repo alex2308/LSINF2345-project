@@ -26,7 +26,7 @@ start(N) ->
   if N > 2000 ->
     io:format("Done spawning 2000~n");
     true ->
-      P = spawn(multiClientPerf,main,[N]),
+      _P = spawn(multiClientPerf,main,[N]),
       start(N+1)
   end
 .
