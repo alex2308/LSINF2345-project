@@ -14,23 +14,6 @@
 
 
 
-snapshot_read(Key,Uid,HandleResp,ClientPid) ->
-  T = os:timestamp(),
-  %% Returns the list of Values read at that time snapshot
-  Rem = hash(Key) rem 2, %pour simplifier j'ai juste fait le reste de la division par 2
-  if Rem == 1 ->
-      HandleResp ! {add,Uid,ClientPid}, % Add response handler for Client request
-      data1 ! {read,T,Key,HandleResp,Uid};
-      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data1]);
-    true ->
-      HandleResp ! {add,Uid,ClientPid},
-      data2 ! {read,T,Key,HandleResp,Uid}
-      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data2])
-  end,
-  ok
-.
-
-
 hash(Key) ->
   erlang:phash2(Key)
 .
@@ -60,7 +43,7 @@ queries(Counter,Handler) ->
       queries(Counter+1,Handler);
     {snapshot_read,Keys,ClientPid} ->
       %io:format("snapshot_read request from client ~n"),
-      snapshot_read(Keys,Counter,Handler,ClientPid),
+      snapshot_read_all(Keys,Counter,Handler,ClientPid),
       queries(Counter+1,Handler);
     {gc,ClientPid} ->
       Handler ! {add,Counter,ClientPid},
@@ -97,12 +80,19 @@ response(Awaits) ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
       end;
-    {ok,read,Values,Id} ->
+    {ok,read,Uid,Index,Value} ->
       %io:format("Handle read-reponse from Datastore~n"),
-      case dict:find(Id,Awaits) of
-        {ok,ClientPiD} ->
-          ClientPiD ! {ok,Values},
-          response(dict:erase(Id,Awaits)); % remove answered query and reloop
+      case dict:find(Uid,Awaits) of
+        {ok,Tuple} ->
+          NTuple = process_read_response(Tuple,Index,Value),
+          if (element(2,NTuple) == 0) ->
+              List = lists:sort(fun (A,B) -> element(1,A) =< element(1,B) end,dict:to_list(element(3,NTuple))),
+              element(1,NTuple) ! {ok,lists:map(fun(A) -> element(2,A) end,List)},
+              response(dict:erase(Uid,Awaits));
+            true ->
+              io:format(""),
+              response(dict:store(Uid,NTuple,Awaits))
+          end;
         error ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
@@ -110,7 +100,7 @@ response(Awaits) ->
     {ok,gc,Id} ->
       case dict:find(Id,Awaits) of
         {ok,ClientPiD} ->
-          ClientPiD ! {ok,gc},
+          ClientPiD ! {ok},
           response(dict:erase(Id,Awaits)); % remove answered query and reloop
         error ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
@@ -120,3 +110,49 @@ response(Awaits) ->
       io:format("Stop response manager ~n")
   end
 .
+
+snapshot_read_all(Keys,Uid,HandleResp,ClientPid) ->
+  HandleResp ! {add,Uid,{ClientPid,length(Keys),dict:new()}},
+  snap(Keys,Uid,HandleResp,1)
+.
+
+snap(Keys,Uid,HandleResp,Index) ->
+  case Keys of
+    [] ->
+      io:format("");
+    [H|T] ->
+      snapshot_read(H,Uid,HandleResp,Index),
+      snap(T,Uid,HandleResp,Index+1)
+  end
+.
+
+snapshot_read(Key,Uid,HandleResp,Index) ->
+  T = os:timestamp(),
+  %% Returns the list of Values read at that time snapshot
+  Rem = hash(Key) rem 2, %pour simplifier j'ai juste fait le reste de la division par 2
+  if Rem == 1 ->
+      data1 ! {read,T,Key,HandleResp,Uid,Index};
+      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data1]);
+    true ->
+      data2 ! {read,T,Key,HandleResp,Uid,Index}
+      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data2])
+  end
+.
+
+
+%% Wait is tuple {ClientPid,#reponsewaiting,dict(Index,Value)}
+process_read_response(Wait,Index,Value) ->
+  %% add new value to Wait + check if not already present => error else OK.
+  Dict = element(3,Wait),
+  case dict:find(Index,Dict) of
+    error ->  %% good as no 2 responses for same Index can be seen
+      NewDict = dict:store(Index,Value,Dict),
+      {element(1,Wait),element(2,Wait)-1,NewDict};
+    {ok,_V} ->
+      io:format("Error got response for Index already present ~n"),
+      Wait
+  end
+.
+
+%% lists:sort(fun (A,B) -> element(1,A) =< element(1,B) end,dict:to_list(D5))
+%% lists:map(fun (A) -> element(2,A) end,LIST)

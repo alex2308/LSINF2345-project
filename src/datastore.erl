@@ -61,11 +61,11 @@ core(Store,BufferOld) ->
           T = os:timestamp(),
           {Value,_UnusedTime} = lists:nth(1,History),
           if T >= Time ->
-              io:format("OK data valid~n"),
+              %io:format("OK data valid~n"),
               ResponsePid ! {ok,read,Uid,Index,Value},
               core(Store,Buffer);
             true ->
-              io:format("Data not yet valid~n"),
+              %io:format("Data not yet valid~n"),
               BufferElem = {Time,Key,ResponsePid,Uid,Index},
               _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000), %% TODO: maybe to many timers
               core(Store,lists:append(Buffer,[BufferElem]))
@@ -75,7 +75,7 @@ core(Store,BufferOld) ->
       end;
     {gc,ResponsePid,Uid} ->
       ResponsePid ! {ok,gc,Uid},
-      io:format("TODO: do GC ~n"),
+      io:format("GC not implemented yet on store~n"),
       core(Store,Buffer);
     {clean} -> %% Message from timer to clean buffer => restart function
       io:format("Clean Buffer"),
