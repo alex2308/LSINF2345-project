@@ -10,77 +10,79 @@
 -author("gillonb").
 
 %% API
--export([start/1,queries/2,response/1]).
+-export([startshell/1,start/2,queries/3,response/1,start_node/3]).
 
 
 -import(datastore,[start/0]).
 
 
-hash(Key) ->
-  erlang:phash2(Key)
+hash(Key,N) ->
+  erlang:phash2(Key,N)+1
 .
 
-
-start(Name) ->
-  case whereis(data1) of
-    undefined ->
-      io:format("Starting 2 datastores....."),
-      datastore:start(),
-      io:format("Running~n");
-    _Other ->
-      io:format("")
-  end,
-  case Name of
-    [H|_T] ->
-      Reg = H;
-    Other ->
-      Reg = Other
-  end,
-  Dd = dict:new(),
-  R = spawn(tmanager,response,[Dd]),
-  Core = spawn(tmanager,queries,[0,R]),
-  if is_atom(Reg) ->
-      register(Reg,Core),
-      _P = io:format("Transaction manager running and registered as ~p~n",[Reg]);
+startshell(ListStrArg) ->
+  if length(ListStrArg) /= 3 -> io:format("Number of arguments incorrect~n"), exit;
     true ->
-      O = list_to_atom(Reg),
-      register(O,Core),
-      _P = io:format("Transaction manager running and registered as ~p~n",[O])
+      Pid = list_to_atom(lists:nth(1,ListStrArg)),
+      Node = list_to_atom(lists:nth(2,ListStrArg)),
+      Name = list_to_atom(lists:nth(3,ListStrArg)),
+      S = net_kernel:connect(Node),
+      io:format("~n# tmanager (~p) running on node ~p ~n",[Name,node()]),
+      io:format("# Node connected to database node: ~p~n",[S]),
+      case Node of
+        none ->
+          start(Pid,Name);
+        _Other ->
+          start({Pid,Node},Name)
+      end
+  end
+.
+
+start(DatastorePid,Name) ->
+  DatastorePid ! {connect,self()}, %% connect to the database
+  Dd = dict:new(),
+  receive
+    {ok,ListData} ->
+      R = spawn(tmanager,response,[Dd]),
+      Core = spawn(tmanager,queries,[0,R,ListData]),
+      _F = register(Name,Core)
   end,
-  io:format("NODE: ~p~n~n",[node()]),
   done
+.
+
+%% Function to run in a live node to connect to other live node
+%
+start_node(DatastoreNode,DataStoreName,Name) ->
+  Succes = net_kernel:connect(DatastoreNode),
+  io:format("~p~n",[Succes]),
+  if Succes ->
+      io:format("Connected to node ~p~n",[DatastoreNode]),
+      start({DataStoreName,DatastoreNode},Name);
+    true ->
+      io:format("Connect failed to ~p ~n",[DatastoreNode]),
+      done
+  end
 .
 
 %% Function that runs in a node and that treats client requests
 %%
-queries(Counter,Handler) ->
+queries(Counter,Handler,ListOfDatastores) ->
   receive
     {update,Key,Value,ClientPid} ->
       Handler ! {add,Counter,ClientPid}, % Add response handler for Client request
-      Rem = hash(Key) rem 2,
-      if Rem == 1 ->
-          data1 ! {update,Key,Value,Handler,Counter};
-          %io:format("Sending the following request ~p to ~p ~n",[{update,Key,Value},'data1']);
-        true ->
-          data2 ! {update,Key,Value,Handler,Counter}
-          %io:format("Sending the following request ~p to ~p ~n",[{update,Key,Value},'data2'])
-      end,
-      queries(Counter+1,Handler);
+      Rem = hash(Key,length(ListOfDatastores)),
+      lists:nth(Rem,ListOfDatastores) ! {update,Key,Value,Handler,Counter},
+      queries(Counter+1,Handler,ListOfDatastores);
     {snapshot_read,Keys,ClientPid} ->
       %io:format("snapshot_read request from client ~n"),
-      snapshot_read_all(Keys,Counter,Handler,ClientPid),
-      queries(Counter+1,Handler);
+      snapshot_read_all(Keys,Counter,Handler,ClientPid,ListOfDatastores),
+      queries(Counter+1,Handler,ListOfDatastores);
     {gc,ClientPid} ->
-      Handler ! {add,Counter,ClientPid},
-      data1 ! {gc,Handler,Counter},
-      Handler ! {add,Counter,ClientPid},
-      data2 ! {gc,Handler,Counter},
-      queries(Counter+1,Handler);
-    {stop} ->
-      data1 ! {stop},
-      data2 ! {stop},
-      Handler ! {stop},
-      io:format("Stop query manager ~n"),
+      NewC = send_gc_all(Counter,ListOfDatastores,ClientPid,Handler),
+      queries(NewC,Handler,ListOfDatastores);
+    {exit} ->
+      Handler ! {exit},
+      io:format("Query manager terminated~n"),
       exit('exit')
   end
 .
@@ -132,37 +134,31 @@ response(Awaits) ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
       end;
-    {stop} ->
-      io:format("Stop response manager ~n")
+    {exit} ->
+      io:format("Response manager terminated~n")
   end
 .
 
-snapshot_read_all(Keys,Uid,HandleResp,ClientPid) ->
+snapshot_read_all(Keys,Uid,HandleResp,ClientPid,ListOfDatastores) ->
   HandleResp ! {add,Uid,{ClientPid,length(Keys),dict:new()}},
-  snap(Keys,Uid,HandleResp,1)
+  snap(Keys,Uid,HandleResp,1,ListOfDatastores)
 .
 
-snap(Keys,Uid,HandleResp,Index) ->
+snap(Keys,Uid,HandleResp,Index,ListOfDatastores) ->
   case Keys of
     [] ->
       io:format("");
     [H|T] ->
-      snapshot_read(H,Uid,HandleResp,Index),
-      snap(T,Uid,HandleResp,Index+1)
+      snapshot_read(H,Uid,HandleResp,Index,ListOfDatastores),
+      snap(T,Uid,HandleResp,Index+1,ListOfDatastores)
   end
 .
 
-snapshot_read(Key,Uid,HandleResp,Index) ->
+snapshot_read(Key,Uid,HandleResp,Index,ListOfDatastores) ->
   T = os:timestamp(),
   %% Returns the list of Values read at that time snapshot
-  Rem = hash(Key) rem 2, %pour simplifier j'ai juste fait le reste de la division par 2
-  if Rem == 1 ->
-      data1 ! {read,T,Key,HandleResp,Uid,Index};
-      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data1]);
-    true ->
-      data2 ! {read,T,Key,HandleResp,Uid,Index}
-      %io:format("Sending the following request ~p to ~p ~n",[{read,T,Key},data2])
-  end
+  Rem = hash(Key,length(ListOfDatastores)), %pour simplifier j'ai juste fait le reste de la division par 2
+  lists:nth(Rem,ListOfDatastores) ! {read,T,Key,HandleResp,Uid,Index}
 .
 
 
@@ -180,5 +176,13 @@ process_read_response(Wait,Index,Value) ->
   end
 .
 
-%% lists:sort(fun (A,B) -> element(1,A) =< element(1,B) end,dict:to_list(D5))
-%% lists:map(fun (A) -> element(2,A) end,LIST)
+
+%% Return the new counter value
+send_gc_all(Counter,ListOfDatastores,ClientPid,Handler) ->
+  case ListOfDatastores of
+      []-> Counter;
+      [H|T] -> Handler ! {add,Counter,ClientPid},
+        H ! {gc,Handler,Counter},
+        send_gc_all(Counter+1,T,ClientPid,Handler)
+  end
+.

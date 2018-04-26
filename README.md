@@ -1,7 +1,7 @@
 # LSINF2345-project
 
 ### Authors	: Alexandre Carlier & Bastien Gillon
-### Date		: 09/05/2018
+### Date	: 09/05/2018
 ### Course	: LSINF2345
 
 
@@ -21,4 +21,11 @@
  - service	: compile only the erlang files from src/ to bin/ that are needed by the distributed storage service
 
 ### Execute/Run
- - to start the service, run the 'start_service()' function from 'app' module
+ - Use the launch.sh script to launch the distributed DB service
+ 
+ 
+### ERLANG MODULES
+ - app			: module that is used to start the datastore and the transaction manager and do the requests (update,snapshotread,gc)
+ - parser		: module that can read and execute transactions from a file and output the result in a file
+ - tmanager		: module containing the transaction manager code
+ - datastore	: module containing the datastore implementation

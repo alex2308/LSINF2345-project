@@ -9,7 +9,7 @@
 -author("Bastien Gillon").
 
 %% API export
--export([start/0,core/2]).
+-export([startshell/1,start/2,core/2,connectionHandler/1]).
 
 -define(TIMERMS,10).
 
@@ -21,16 +21,45 @@
 %% -Main function 'core' is hidden from user. Only interaction happens through 'update' and
 %%  'snapshot_read'
 
+startshell(ListArgs) ->
+  if length(ListArgs) /= 2 -> io:format("Number of args not OK~n"),exit;
+    true ->
+      N = list_to_integer(lists:nth(1,ListArgs)),
+      Name = list_to_atom(lists:nth(2,ListArgs)),
+      start(N,Name)
+  end
+.
 
-%% Starts 2 node running the core function and registering the 2 nodes as 'data1' and 'data2'
+%% Start N datastores and return the running node that handles the connections to it
 %%
-start() ->
-  Dict1 = dict:new(),
-  Dict2 = dict:new(),
-  Data1 = spawn(datastore,core,[Dict1,[]]),
-  register(data1,Data1),
-  Data2 = spawn(datastore,core,[Dict2,[]]),
-  register(data2,Data2)
+start(N,ConnectName) ->
+  List = generateNstores(N,"datastore_"),
+  S = spawn(datastore,connectionHandler,[List]),
+  _R = register(ConnectName,S),
+  io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[S,ConnectName,node()])
+.
+
+connectionHandler (StoresList) ->
+  receive
+    {connect,Pid} ->
+      Pid ! {ok,StoresList},
+      connectionHandler(StoresList);
+    {exit} ->
+      lists:map(fun (X) -> X ! {exit} end,StoresList)
+  end
+.
+
+%%
+generateNstores(N,Name) ->
+  if N==0 -> [];
+    true ->
+      Rname = lists:append(Name,integer_to_list(N)),
+      AtomRname = list_to_atom(Rname),
+      Dict = dict:new(),
+      SPid = spawn(datastore,core,[Dict,[]]),
+      register(AtomRname,SPid),
+      [SPid|generateNstores(N-1,Name)]
+  end
 .
 
 %% MAIN function
@@ -71,7 +100,8 @@ core(Store,BufferOld) ->
               core(Store,lists:append(Buffer,[BufferElem]))
           end;
         error -> % should not happen
-          io:format("Should not happen ~n")
+          io:format("Should not happen (Key not avaible) ~n"),
+          core(Store,Buffer) %% TODO:
       end;
     {gc,ResponsePid,Uid} ->
       ResponsePid ! {ok,gc,Uid},
@@ -80,8 +110,8 @@ core(Store,BufferOld) ->
     {clean} -> %% Message from timer to clean buffer => restart function
       io:format("Clean Buffer"),
       core(Store,Buffer);
-    {stop} ->
-      io:format("Stop datastore ~n")
+    {exit} ->
+      io:format("Datastore terminated ~n")
   end
 .
 
