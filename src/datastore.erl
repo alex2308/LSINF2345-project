@@ -11,7 +11,12 @@
 %% API export
 -export([startshell/1,start/2,core/2,connectionHandler/1]).
 
+%% Timer in ms for snapshotread
 -define(TIMERMS,10).
+
+
+%% Delay in ms
+-define(DELAY,500).
 
 
 %%
@@ -96,7 +101,7 @@ core(Store,BufferOld) ->
             true ->
               %io:format("Data not yet valid~n"),
               BufferElem = {Time,Key,ResponsePid,Uid,Index},
-              _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000), %% TODO: maybe to many timers
+              _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000),
               core(Store,lists:append(Buffer,[BufferElem]))
           end;
         error -> % should not happen
@@ -105,8 +110,10 @@ core(Store,BufferOld) ->
       end;
     {gc,ResponsePid,Uid} ->
       ResponsePid ! {ok,gc,Uid},
-      io:format("GC not implemented yet on store~n"),
-      core(Store,Buffer);
+      NStoreList = clean_store(dict:to_list(Store)),
+      NStore = dict:from_list(NStoreList),
+      %%io:format("Do gc~n")
+      core(NStore,Buffer);
     {clean} -> %% Message from timer to clean buffer => restart function
       io:format("Clean Buffer"),
       core(Store,Buffer);
@@ -144,3 +151,41 @@ timerClean(DataCorePid,Milliseconds) ->
   end
 .
 
+
+%% Takes the List [{Key,History}{Key1,History1}...]
+%%
+clean_store(Store) ->
+  case Store of
+    [] ->
+      [];
+    [{Key,HistList}|T] ->
+      % only try to remove values when more than 1 value avaible
+      if (length(HistList) == 1) ->
+          [{Key,HistList}|clean_store(T)];
+        true ->
+          [{Key,clean_hist_list(HistList,1)}|clean_store(T)]
+      end
+  end
+.
+
+%% Remove all unaccessible Values of the value history list
+%%
+clean_hist_list(HistList,N) ->
+  case HistList of
+    [] ->
+      [];
+    [{Value,TimeStamp}|T] ->
+      if (N == 1) ->
+          [{Value,TimeStamp}|clean_hist_list(T,0)];
+        true ->
+          {MS,S,Ms} = TimeStamp,
+          Tn = {MS,S,Ms+(?DELAY)},
+          Ti = os:timestamp(),
+          if (Ti > Tn) ->
+              [];
+            true ->
+              [{Value,TimeStamp}|clean_hist_list(T,0)]
+          end
+      end
+  end
+.
