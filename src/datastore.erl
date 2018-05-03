@@ -9,7 +9,7 @@
 -author("Bastien Gillon").
 
 %% API export
--export([startshell/1,start/2,core/2,connectionHandler/1]).
+-export([start_shell/1,start/2,core/2,connectionHandler/1]).
 
 %% Timer in ms for snapshotread
 -define(TIMERMS,10).
@@ -26,7 +26,7 @@
 %% -Main function 'core' is hidden from user. Only interaction happens through 'update' and
 %%  'snapshot_read'
 
-startshell(ListArgs) ->
+start_shell(ListArgs) ->
   if length(ListArgs) /= 2 -> io:format("Number of args not OK~n"),exit;
     true ->
       N = list_to_integer(lists:nth(1,ListArgs)),
@@ -41,7 +41,7 @@ start(N,ConnectName) ->
   List = generateNstores(N,"datastore_"),
   S = spawn(datastore,connectionHandler,[List]),
   _R = register(ConnectName,S),
-  io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[S,ConnectName,node()])
+  io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[ConnectName,S,node()])
 .
 
 connectionHandler (StoresList) ->

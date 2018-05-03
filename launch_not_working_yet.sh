@@ -15,6 +15,7 @@
 # ex. ./launch 1 manager manager => opens a erlang terminal with running node with name manager@HOST
 #
 
+
 if [ "$#" -ne 5 or "$#" -ne 6 ]; then
 	echo "illegal number of parameters";
 else

@@ -10,7 +10,7 @@
 -author("gillonb").
 
 %% API
--export([startshell/1,start/2,queries/3,response/1,start_node/3]).
+-export([start_shell/1,start/2,queries/3,response/1,start_node/3]).
 
 
 -import(datastore,[start/0]).
@@ -20,7 +20,7 @@ hash(Key,N) ->
   erlang:phash2(Key,N)+1
 .
 
-startshell(ListStrArg) ->
+start_shell(ListStrArg) ->
   if length(ListStrArg) /= 3 -> io:format("Number of arguments incorrect~n"), exit;
     true ->
       Pid = list_to_atom(lists:nth(1,ListStrArg)),
