@@ -79,6 +79,7 @@ queries(Counter,Handler,ListOfDatastores) ->
       queries(Counter+1,Handler,ListOfDatastores);
     {gc,ClientPid} ->
       NewC = send_gc_all(Counter,ListOfDatastores,ClientPid,Handler),
+      Handler ! {add,Counter,{ClientPid,length(ListOfDatastores)}},
       queries(NewC,Handler,ListOfDatastores);
     {exit} ->
       Handler ! {exit},
@@ -127,9 +128,13 @@ response(Awaits) ->
       end;
     {ok,gc,Id} ->
       case dict:find(Id,Awaits) of
-        {ok,ClientPiD} ->
-          ClientPiD ! {ok},
-          response(dict:erase(Id,Awaits)); % remove answered query and reloop
+        {ok,{ClientPiD,N}} ->
+          if (N==1) ->
+            ClientPiD ! {ok}, %% only when all have replied!!
+            response(dict:erase(Id,Awaits)); % remove gc query waiting
+          true ->
+            response(dict:store(Id,{ClientPiD,N-1},Awaits)) % remove 1 answered query
+          end;
         error ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
@@ -180,9 +185,9 @@ process_read_response(Wait,Index,Value) ->
 %% Return the new counter value
 send_gc_all(Counter,ListOfDatastores,ClientPid,Handler) ->
   case ListOfDatastores of
-      []-> Counter;
-      [H|T] -> Handler ! {add,Counter,ClientPid},
+      []-> Counter+1;
+      [H|T] ->
         H ! {gc,Handler,Counter},
-        send_gc_all(Counter+1,T,ClientPid,Handler)
+        send_gc_all(Counter,T,ClientPid,Handler)
   end
 .

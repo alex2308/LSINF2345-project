@@ -9,7 +9,8 @@
 -author("Bastien Gillon").
 
 %% API
--export([start/3,execute/2,write/1]).
+-export([start/3,execute/2,writef/1,start_shell/1,close/0]).
+
 
 
 
@@ -17,18 +18,47 @@
 %% Launch this file to process all transactions in a file
 start(Filename,TransactionManagerPid,OutFile) ->
   F = exec(Filename),
+  io:format("Opening write file (~p)... ",[OutFile]),
   File = file:open(OutFile, [write]),
   case File of
     {ok,IODevice} ->
-      io:format("File opened... \n"),
+      io:format("ok \n"),
       Out = IODevice;
     {error, _Reason} ->
-      io:format("Error opening file \n"),
-      Out = none
+      io:format("error \n"),
+      case whereis(closedt) of
+        undefined ->
+          _R = 4;
+        _Other ->
+          closedt ! {exit}
+      end,
+      Out = none,
+      exit("Error while trying to open file")
   end,
-  W = spawn(parser,write,[Out]),
-  _Temp = register(write,W),
+  W = spawn(parser,writef,[Out]),
+  _Temp = register(writes,W),
   _T = spawn(parser,execute,[F,TransactionManagerPid])
+.
+
+%% Take a list of 2 args that are respectively INPUTFILENAME and OUTPUTFILENAME
+%%
+start_shell(ListArgs) ->
+  Filename = lists:nth(1,ListArgs),
+  OutputFile = lists:nth(2,ListArgs),
+  _ = datastore:start(2,data),
+  _ = tmanager:start(data,man),
+  S = spawn(parser,close,[]),
+  _ = register(closedt,S),
+  _ = start(Filename,man,OutputFile),
+  ok
+.
+
+close() ->
+  receive
+    {exit} ->
+      man ! {exit},
+      data ! {exit}
+  end
 .
 
 
@@ -36,7 +66,14 @@ execute(D,TransactionManagerPid) ->
   case io:get_line(D, "") of
     eof ->
       file:close(D),
-      write ! {stop};
+      case whereis(closedt) of
+        undefined ->
+          writes ! {stop};
+        _Other ->
+          closedt ! {exit},
+          writes ! {stop}
+      end;
+
     Line ->
       Chars = string:split(string:trim(Line)," ",all),
       case Chars of
@@ -54,49 +91,61 @@ execute(D,TransactionManagerPid) ->
             {Time,_Rest} ->
               _Done = timer:sleep(Time)
           end,
-          self() ! {skip}
+          self() ! {skip,ok};
+        [Other] ->
+          io:format("Skipping unsupported command: ~p ~n",[Other]),
+          self() ! {skip,noout},
+          execute(D,TransactionManagerPid)
       end,
       receive
         {ok} ->
-          write ! {w,ok},
-          execute(D,TransactionManagerPid);
-        {ok,gc} ->
-          write ! {w,ok},
+          writes ! {w,ok},
           execute(D,TransactionManagerPid);
         {ok,Values} ->
-          write ! {writeList,Values},
+          writes ! {writeList,Values},
           execute(D,TransactionManagerPid);
-        {skip} ->
-          write ! {w,ok},
-          execute(D,TransactionManagerPid);
+        {skip,O} ->
+          case O of
+            noout -> execute(D,TransactionManagerPid);
+            _ ->
+              writes ! {w,ok},
+              execute(D,TransactionManagerPid)
+          end;
         _Other ->
-          io:format("Unknown~n")
+          execute(D,TransactionManagerPid)
       end
   end
 .
 
 exec(InFileName) ->
-  io:format("Do read and execute \n"),
+  io:format("Opening read file (~p)... ",[InFileName]),
   File = file:open(InFileName, [read]),
   case File of
     {ok,IODevice} ->
-      io:format("File opened... \n"),
+      io:format("ok \n"),
       IODevice;
     {error, _Reason} ->
-      io:format("Error opening file \n")
+      io:format("error \n"),
+      case whereis(closedt) of
+        undefined ->
+          _R = 4;
+        _Other ->
+          closedt ! {exit}
+      end,
+      exit("Error while trying to open file")
   end
 .
 
 
 
-write(Out) ->
+writef(Out) ->
   receive
     {w,Data} ->
       io:fwrite(Out,"~p~n",[Data]),
-      write(Out);
+      writef(Out);
     {writeList,DataList} ->
       format_list(DataList,Out),
-      write(Out);
+      writef(Out);
     {stop} ->
       file:close(Out),
       done

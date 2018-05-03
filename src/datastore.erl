@@ -160,10 +160,10 @@ clean_store(Store) ->
       [];
     [{Key,HistList}|T] ->
       % only try to remove values when more than 1 value avaible
-      if (length(HistList) == 1) ->
-          [{Key,HistList}|clean_store(T)];
+      if (length(HistList) >= 1) ->
+          [{Key,clean_hist_list(HistList,1)}|clean_store(T)];
         true ->
-          [{Key,clean_hist_list(HistList,1)}|clean_store(T)]
+          [{Key,HistList}|clean_store(T)]
       end
   end
 .
@@ -184,7 +184,7 @@ clean_hist_list(HistList,N) ->
           if (Ti > Tn) ->
               [];
             true ->
-              [{Value,TimeStamp}|clean_hist_list(T,0)]
+              [clean_hist_list(T,0)]
           end
       end
   end
