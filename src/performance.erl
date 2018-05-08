@@ -26,6 +26,13 @@ test_gc(ManagerPid) ->
 MicroSec = timer:now_diff(T2,T1),
 io:format("Time to empty with GC is ~p ~n",[MicroSec]).
 
+%% Function to measure performance of a db system.
+%%  Each client sends an update query and waits for a response before repeating.
+%%
+%%  ARGS: -N: number of clients run in parallel that will issue updates
+%%        -ManagerPid: atom of transactional manager Pid
+%%
+%% NOTE: clients send unique keys but with parallel clients, they maybe update keys from others
 start(N,ManagerPid) ->
   io:format("Launch ~p parser client(s) ~n",[N]),
   run(N,self(),ManagerPid),

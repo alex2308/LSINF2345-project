@@ -30,6 +30,7 @@ if [ "$#" -eq 0 ]; then
 else
     if [ "$1" == "db" ]; then
         if [ "$#" -eq 4 ]; then
+            make all
            erl -pa bin/ -sname $2 -run datastore start_shell $3 $4
         else
             echo "incorrect arguments"
@@ -38,6 +39,7 @@ else
     else
         if [ "$1" == "tm" ]; then
             if [ "$#" -eq 5 ]; then
+                make all
                 erl -pa bin/ -sname $2 -run tmanager start_shell $4 $3 $5
             else
                 echo "incorrect arguments"

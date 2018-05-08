@@ -12,6 +12,22 @@
 -export([start_shell/1,start/2,queries/3,response/1,start_node/3]).
 
 
+%% Function to connect to a data store locate by DatastorePid and launch a transactional manager with name Name
+%%
+%%  ARGS: - DatastorePid: the Pid of the datastore connection handler
+%%        - Name: the atom you want to assign the new transactional manager to.
+%%
+start(DatastorePid,Name) ->
+  DatastorePid ! {connect,self()}, %% connect to the database
+  Dd = dict:new(),
+  receive
+    {ok,ListData} ->
+      R = spawn(tmanager,response,[Dd]), % spawn a response handler (from db to client)
+      Core = spawn(tmanager,queries,[0,R,ListData]),  % spawn a query handler (from client to db)
+      _F = register(Name,Core)
+  end
+.
+
 %% Function to start when opening tmanager from sh shell not from erlang
 %%
 %%  ARGS: [DatastorePid,DataStoreNode,Name] => list of strings
@@ -37,23 +53,7 @@ start_shell(ListStrArg) ->
 .
 
 
-%% Function to connect to a data store locate by DatastorePid and launch a transactional manager with name Name
-%%
-%%  ARGS: - DatastorePid: the Pid of the datastore connection handler
-%%        - Name: the atom you want to assign the new transactional manager to.
-%%
-start(DatastorePid,Name) ->
-  DatastorePid ! {connect,self()}, %% connect to the database
-  Dd = dict:new(),
-  receive
-    {ok,ListData} ->
-      R = spawn(tmanager,response,[Dd]),
-      Core = spawn(tmanager,queries,[0,R,ListData]),
-      _F = register(Name,Core)
-  end
-.
-
-%% Function to run in a live node to connect to other live node
+%% Function called when db is located in live node
 %%
 %%  ARGS: - DataStoreNode: the atom that is the name of the node where the db is running
 %%        - DatastoreName: the atom that is the name of the datastore connection handler
@@ -70,7 +70,7 @@ start_node(DatastoreNode,DataStoreName,Name) ->
   end
 .
 
-%% Function that runs in a node and that treats client requests
+%% Function that treats all client requests
 %%
 %%  ARGS: - Counter: Used as Unique Identifier and is increased each time
 %%        - Handler: Pid of response handler
@@ -100,23 +100,23 @@ queries(Counter,Handler,ListOfDatastores) ->
 
 
 %%
-%% Function that runs in a node and that treats the responses to the client
+%% Function that treats all the responses from db's and sends then to the right client
 %%
-%%  ARGS: - Awaits: Dictionnary of a Unique Identifier (key) and a value that
-%%            can be a clientPid (for update) or a tuple of clientPid and a integer representing all the
+%%  ARGS: - Awaits: Dictionnary of a Unique Identifier as key and a value that
+%%            can be a clientPid (for update) OR a tuple of clientPid and a integer representing all the
 %%            datastore that need to respond (for gc)
-%%            or a tuple of clientPid,NumberOfResponseWaiting and empty dictionnary (which  will contain
+%%            OR a tuple of clientPid,NumberOfResponseWaiting and empty dictionnary (which  will contain
 %%            the index from the snapshot_read request as key and as value the value read from the store)
 %%            (for snapshot read)
 %%
 %%
 response(Awaits) ->
   receive
-    {add,Key,Value} ->
+    {add,Key,Value} -> % store Value in Awaits dictionnary
       %io:format("Store new ~n"),
       NewAwaits = dict:store(Key,Value,Awaits), % store the fact that we should await a response
       response(NewAwaits);
-    {ok,update,Id} -> % store has sucessfully handled update
+    {ok,update,Id} -> % db has sucessfully handled update
       %io:format("Handle update-reponse from Datastore ~n"),
       case dict:find(Id,Awaits) of
         {ok,ClientPiD} ->
@@ -126,7 +126,7 @@ response(Awaits) ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
       end;
-    {ok,read,Uid,Index,Value} -> % store has sucessfully handled snapshot_read
+    {ok,read,Uid,Index,Value} -> % db has sucessfully handled snapshot_read
       %io:format("Handle read-reponse from Datastore~n"),
       case dict:find(Uid,Awaits) of
         {ok,Tuple} ->
@@ -142,7 +142,7 @@ response(Awaits) ->
           %io:format("Error no awaiting Id (~p) for response from datastore ~n",[Id]),
           response(Awaits)
       end;
-    {ok,gc,Id} -> % store has sucessfully handled gc
+    {ok,gc,Id} -> % db has sucessfully handled gc
       case dict:find(Id,Awaits) of
         {ok,{ClientPiD,N}} ->
           if (N==1) -> % All stores have replied
