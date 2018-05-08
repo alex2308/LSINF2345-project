@@ -1,12 +1,12 @@
 %%%-------------------------------------------------------------------
-%%% @author Bastien Gillon
+%%% @author Bastien Gillon, Alexandre Carlier
 %%% @doc
 %%%
 %%% @end
 %%% Created : 19. Apr 2018 17:50
 %%%-------------------------------------------------------------------
 -module(parser).
--author("Bastien Gillon").
+-author(" Bastien Gillon, Alexandre Carlier").
 
 %% API
 -export([start/3,execute/2,writef/1,start_shell/1,close/0]).
@@ -14,8 +14,12 @@
 
 
 
+%% Function called when starting the parser:
 %%
-%% Launch this file to process all transactions in a file
+%%  ARGS: -Filename: filename of input file
+%%        -TransactionManagerPid: atom of pid of registered transactional manager
+%%        -OutFile: filename of output file
+%%
 start(Filename,TransactionManagerPid,OutFile) ->
   io:format("Opening read file (~p)... ",[Filename]),
   FileI = file:open(Filename, [read]),
@@ -66,8 +70,8 @@ start(Filename,TransactionManagerPid,OutFile) ->
   end
 .
 
-%% Take a list of 2 args that are respectively INPUTFILENAME and OUTPUTFILENAME
-%%
+
+%% Function called when starting parser from sh shell
 start_shell(ListArgs) ->
   Filename = lists:nth(1,ListArgs),
   OutputFile = lists:nth(2,ListArgs),
@@ -89,7 +93,7 @@ close() ->
   end
 .
 
-
+%% Main function to read from file 'D' and parser the lines + send commands to TM
 execute(D,TransactionManagerPid) ->
   case io:get_line(D, "") of
     eof ->
@@ -140,7 +144,7 @@ execute(D,TransactionManagerPid) ->
 .
 
 
-
+%% Function used to write to 'Out' file
 writef(Out) ->
   receive
     {w,Data} ->

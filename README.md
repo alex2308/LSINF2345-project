@@ -25,6 +25,7 @@
 ### Execute/Run
  - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a distributed storage system localy, send the commands (INPUTFILE) to it, store the result in a file (OUTPUTFILE) and stop the system
  - Use <./launch.sh > to see the explaination and arguments required for launching live nodes
+ - use only the 'start' functions when starting modules from a erlang shell
  
 ### Erlang Modules
  - app			: module that can do update, snapshot_read and gc on a database when a transaction manager is provided

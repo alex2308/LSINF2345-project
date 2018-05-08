@@ -11,13 +11,22 @@
 %% API export
 -export([start_shell/1,start/2,core/2,connectionHandler/1]).
 
-%% Timer in ms for snapshotread
--define(TIMERMS,10).
-
 
 %% Delay in ms. usefull for gc
 -define(DELAY,500).
 
+
+%%
+%% Function that creates N stores in different N nodes and register the connection handler node with ConnectName
+%%  Arg:  - N: integer representing the number of store you want to open
+%%        - ConnectName: atom where the store connector or connection handler will be stored
+%%
+start(N,ConnectName) ->
+  List = generateNstores(N,"datastore_"),
+  S = spawn(datastore,connectionHandler,[List]),
+  _R = register(ConnectName,S),
+  io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[ConnectName,S,node()])
+.
 
 %%
 %% Function to run from shell command with following arguments:
@@ -31,19 +40,6 @@ start_shell(ListArgs) ->
       Name = list_to_atom(lists:nth(2,ListArgs)),
       start(N,Name)
   end
-.
-
-
-%%
-%% Function that generates N stores and register the connection handler with ConnectName
-%%  Arg:  - N: integer representing the number of store you want to open
-%%        - ConnectName: atom where the store connector or connection handler will be stored
-%%
-start(N,ConnectName) ->
-  List = generateNstores(N,"datastore_"),
-  S = spawn(datastore,connectionHandler,[List]),
-  _R = register(ConnectName,S),
-  io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[ConnectName,S,node()])
 .
 
 %%
@@ -80,7 +76,7 @@ generateNstores(N,Name) ->
 .
 
 %%
-%% Function that has the main behavior of a data store
+%% Function that is the main behavior of a data store
 %% Args:  - Store: a dictionnary containing all keys with their associated values
 %%        - BufferOld: a list of tuples {Time,Key,ResponsePid,Uid,Index} that
 %%            keeps track of snapshots that needs to wait
@@ -88,7 +84,7 @@ generateNstores(N,Name) ->
 core(Store,BufferOld) ->
   Buffer = tryEmpty(BufferOld,Store), %% First check if buffer can be emptied
   receive
-    {update,Key,Value,ResponsePid,Uid} ->
+    {update,Key,Value,ResponsePid,Uid} -> % add value to Store
       P = dict:find(Key,Store),
       %io:format("Received the following request from Transaction manager: ~p ~n",[{update,Key,Value}]),
       case P of
@@ -100,7 +96,7 @@ core(Store,BufferOld) ->
       end,
       ResponsePid ! {ok,update,Uid}, % respond update ok to tmanager
       core(NewStore,Buffer);
-    {read,Time,Key,ResponsePid,Uid,Index} ->
+    {read,Time,Key,ResponsePid,Uid,Index} -> % do snapshot_read
       P = dict:find(Key,Store),
       %io:format("Received the following request from Transaction manager: ~p ~n",[{read,Time,Key}]),
       case P of
@@ -114,14 +110,14 @@ core(Store,BufferOld) ->
             true -> % data is not yet valid for snapshot
               BufferElem = {Time,Key,ResponsePid,Uid,Index},
               io:format("WAIT ~n"),
-              _TimerRef = timerClean(self(),ceil(timer:now_diff(Time,T)/1000)), % set timer to not forget to empty buffer when data valid
+              _TimerRef = timerClean(self(),ceil(timer:now_diff(Time,T)/1000)+200), % set timer to not forget to empty buffer when data valid
               core(Store,lists:append(Buffer,[BufferElem])) % add element to buffer
           end;
         error -> % Key not avaible: should not happen
           io:format("Should not happen (Key not avaible) ~n"),
-          core(Store,Buffer) %% TODO:
+          core(Store,Buffer) %%
       end;
-    {gc,ResponsePid,Uid} ->
+    {gc,ResponsePid,Uid} -> % do GC
       NStoreList = clean_store(dict:to_list(Store)), %% try to clean the store
       NStore = dict:from_list(NStoreList),
       ResponsePid ! {ok,gc,Uid}, %% send ok message to tmanager
