@@ -10,16 +10,28 @@
 -author("gillonb").
 
 %% API
--export([start/2,time_exec/2]).
+-export([start_loop/2,start/2,time_exec/2,test_gc/1]).
 
 %% Define the max number of updates to send sequentially
 -define(MAX,2000).
-
+start_loop(ListNumbers,ManagerPid) ->
+  case ListNumbers of
+    [H|T] -> start(H,ManagerPid),start_loop(T,ManagerPid);
+    [] -> ok
+  end.
+test_gc(ManagerPid) ->
+  T1 = os:timestamp(),
+  app:gc(ManagerPid),
+  T2 = os:timestamp(),
+MicroSec = timer:now_diff(T2,T1),
+io:format("Time to empty with GC is ~p ~n",[MicroSec]).
 
 start(N,ManagerPid) ->
   io:format("Launch ~p parser client(s) ~n",[N]),
   run(N,self(),ManagerPid),
-  get_all(N)
+  get_all(N),
+  Result = average_time(N),
+  io:format("Average time to read is ~p ~n",[Result/N])
 .
 
 run(N,P,ManagerPid) ->
@@ -35,18 +47,38 @@ get_all(N) ->
   if (N /= 0) ->
     receive
       {ok,TimeVal}
-        -> io:format("~nResult: ~p [updates/sec] ~n~n",[(?MAX*1000000)/TimeVal]),get_all(N-1)
+        -> get_all(N-1)
+        %io:format("~nResult: ~p [updates/sec] ~n~n",[(?MAX*1000000)/TimeVal]),
     end;
     true ->
       ok
+  end
+.
+average_time(N) ->
+    if (N /= 0) ->
+    receive
+      {ok,Val,read}
+        -> Val/1000 + average_time(N-1)
+    end;
+    true ->
+      0
   end
 .
 time_exec(Pid,ManagerPid) ->
   T1 = os:timestamp(),
   main(1,ManagerPid),
   T2 = os:timestamp(),
+  KeyCreator = fun(X) ->
+  string:concat("Key",integer_to_list(X))
+  end,
+ List = lists:map(KeyCreator,lists:seq(1,400)),
+ T3 = os:timestamp(),
+  Answer = app:snapshotread(ManagerPid,List),
+  T4 = os:timestamp(),
   MicroSec = timer:now_diff(T2,T1),
-  Pid ! {ok,MicroSec}
+  MicroSec2 = timer:now_diff(T4,T3),
+  Pid ! {ok,MicroSec},
+  Pid ! {ok,MicroSec2,read}
 .
 
 
@@ -54,10 +86,11 @@ main(Counter,ManagerPid) ->
   if Counter > ?MAX ->
     stop;
     true ->
-      K = integer_to_list(Counter rem 500),
+      K = integer_to_list(Counter),
       Key = "Key",
       FKey = string:concat(Key,K),
-      ManagerPid ! {update,FKey,13031,self()},
+      Value = rand:uniform(100000),
+      ManagerPid ! {update,FKey,Value,self()},
       receive
         {ok} ->
           main(Counter+1,ManagerPid)

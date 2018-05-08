@@ -134,7 +134,11 @@ core(Store,BufferOld) ->
       io:format("Datastore terminated ~n")
   end
 .
-
+print(List) ->
+  case List of
+    [H|T] -> io:format("~p ~n",[H]),print(T);
+    [] -> ok
+  end.
 %%
 %% Function used by the core function to try to emtpy the Buffer of waiting snapshot_reads
 %%
@@ -150,10 +154,10 @@ tryEmpty(Buffer,Store) ->
       if Time < CTime -> % valid!
           P = dict:find(Key,Store),
           case P of
-            {ok,[{Value,_UnusedTime},_Tail]} ->
+            {ok,[{Value,_UnusedTime}|_Tail]} ->
               ResponsePid ! {ok,read,Uid,Index,Value}
           end,
-          [tryEmpty(T,Store)];
+          tryEmpty(T,Store);
         true -> % invalid
           [H|tryEmpty(T,Store)]
       end
