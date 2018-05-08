@@ -113,7 +113,8 @@ core(Store,BufferOld) ->
               core(Store,Buffer);
             true -> % data is not yet valid for snapshot
               BufferElem = {Time,Key,ResponsePid,Uid,Index},
-              _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000), % set timer to not forget to empty buffer when data valid
+              io:format("WAIT ~n"),
+              _TimerRef = timerClean(self(),ceil(timer:now_diff(Time,T)/1000)), % set timer to not forget to empty buffer when data valid
               core(Store,lists:append(Buffer,[BufferElem])) % add element to buffer
           end;
         error -> % Key not avaible: should not happen
@@ -146,17 +147,16 @@ tryEmpty(Buffer,Store) ->
     [H|T] ->
       {Time,Key,ResponsePid,Uid,Index} = H,
       CTime = os:timestamp(),
-      if Time < CTime ->
+      if Time < CTime -> % valid!
           P = dict:find(Key,Store),
           case P of
             {ok,[{Value,_UnusedTime},_Tail]} ->
               ResponsePid ! {ok,read,Uid,Index,Value}
-          end;
-        true -> %
-          NList = lists:append([H],T),
-          NList
-      end,
-      tryEmpty(T,Store)
+          end,
+          [tryEmpty(T,Store)];
+        true -> % invalid
+          [H|tryEmpty(T,Store)]
+      end
   end
 .
 
@@ -168,7 +168,7 @@ tryEmpty(Buffer,Store) ->
 timerClean(DataCorePid,Milliseconds) ->
   case timer:send_after(Milliseconds,DataCorePid,{clean}) of
     {ok,Tref} -> Tref;
-    {error,_Reason} -> io:format("Error send_after~n"),none
+    {error,Reason} -> io:format("Error send_after: ~p ~n",[Reason]),none
   end
 .
 
