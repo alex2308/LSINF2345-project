@@ -22,7 +22,7 @@
  - service	: compile only the erlang files from src/ to bin/ that are needed by the distributed storage service
 
 ### Execute/Run
- - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a system, send the commands (INPUTFILE) to it and store the result in a file (OUTPUTFILE)
+ - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a system, send the commands (INPUTFILE) to it, store the result in a file (OUTPUTFILE) and stop the system
  
  
 ### ERLANG MODULES

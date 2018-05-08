@@ -1,12 +1,12 @@
 %%%-------------------------------------------------------------------
-%%% @author Bastien Gillon
+%%% @author Bastien Gillon, Alexandre Carlier
 %%% @doc
 %%%
 %%% @end
 %%% Created : 19. Apr 2018 11:02
 %%%-------------------------------------------------------------------
 -module(datastore).
--author("Bastien Gillon").
+-author("Bastien Gillon, Alexandre Carlier").
 
 %% API export
 -export([start_shell/1,start/2,core/2,connectionHandler/1]).
@@ -15,19 +15,17 @@
 -define(TIMERMS,10).
 
 
-%% Delay in ms
+%% Delay in ms. usefull for gc
 -define(DELAY,500).
 
 
 %%
-%% -Storage: a dictonary with key and as value a list of tuples. The tuples contain
-%%  {Value of key,timestamp}. This list is oreder from new to old timestamps
+%% Function to run from shell command with following arguments:
+%%    - number of data stores you want to start
+%%    - name you want to give to your store connector. will be registered in this atom
 %%
-%% -Main function 'core' is hidden from user. Only interaction happens through 'update' and
-%%  'snapshot_read'
-
 start_shell(ListArgs) ->
-  if length(ListArgs) /= 2 -> io:format("Number of args not OK~n"),exit;
+  if length(ListArgs) /= 2 -> io:format("Number of args not OK~n"),init:stop();
     true ->
       N = list_to_integer(lists:nth(1,ListArgs)),
       Name = list_to_atom(lists:nth(2,ListArgs)),
@@ -35,7 +33,11 @@ start_shell(ListArgs) ->
   end
 .
 
-%% Start N datastores and return the running node that handles the connections to it
+
+%%
+%% Function that generates N stores and register the connection handler with ConnectName
+%%  Arg:  - N: integer representing the number of store you want to open
+%%        - ConnectName: atom where the store connector or connection handler will be stored
 %%
 start(N,ConnectName) ->
   List = generateNstores(N,"datastore_"),
@@ -44,6 +46,11 @@ start(N,ConnectName) ->
   io:format("# Datastore ~p (Pid ~p) is running on node ~p #~n",[ConnectName,S,node()])
 .
 
+%%
+%% Function that runs in a node an that can connect tmanagers to all the stores or close all the stores
+%%  Args: -StoresList: List of stores Pid
+%%
+%%
 connectionHandler (StoresList) ->
   receive
     {connect,Pid} ->
@@ -54,6 +61,11 @@ connectionHandler (StoresList) ->
   end
 .
 
+%%
+%% Function that spawns and registers N store with the name Name_0 to Name_N-1
+%%  Args: - N: integer representing the number of data stores you want to launchin a local node
+%%        - Name: an atom that will be used to register the new store.
+%%
 %%
 generateNstores(N,Name) ->
   if N==0 -> [];
@@ -67,12 +79,14 @@ generateNstores(N,Name) ->
   end
 .
 
-%% MAIN function
 %%
+%% Function that has the main behavior of a data store
+%% Args:  - Store: a dictionnary containing all keys with their associated values
+%%        - BufferOld: a list of tuples {Time,Key,ResponsePid,Uid,Index} that
+%%            keeps track of snapshots that needs to wait
 %%
 core(Store,BufferOld) ->
-  %% First check if buffer can be emptied
-  Buffer = tryEmpty(BufferOld,Store),
+  Buffer = tryEmpty(BufferOld,Store), %% First check if buffer can be emptied
   receive
     {update,Key,Value,ResponsePid,Uid} ->
       P = dict:find(Key,Store),
@@ -84,7 +98,7 @@ core(Store,BufferOld) ->
         error -> % new Value to be stored
           NewStore = dict:store(Key,[{Value,os:timestamp()}],Store)
       end,
-      ResponsePid ! {ok,update,Uid},
+      ResponsePid ! {ok,update,Uid}, % respond update ok to tmanager
       core(NewStore,Buffer);
     {read,Time,Key,ResponsePid,Uid,Index} ->
       P = dict:find(Key,Store),
@@ -94,34 +108,37 @@ core(Store,BufferOld) ->
           %io:format("The values for ~p are ~p ~n",[Key,History]),
           T = os:timestamp(),
           {Value,_UnusedTime} = lists:nth(1,History),
-          if T >= Time ->
-              %io:format("OK data valid~n"),
+          if T >= Time -> % data is valid for snapshot
               ResponsePid ! {ok,read,Uid,Index,Value},
               core(Store,Buffer);
-            true ->
-              %io:format("Data not yet valid~n"),
+            true -> % data is not yet valid for snapshot
               BufferElem = {Time,Key,ResponsePid,Uid,Index},
-              _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000),
-              core(Store,lists:append(Buffer,[BufferElem]))
+              _TimerRef = timerClean(self(),timer:now_diff(Time,T)/1000), % set timer to not forget to empty buffer when data valid
+              core(Store,lists:append(Buffer,[BufferElem])) % add element to buffer
           end;
-        error -> % should not happen
+        error -> % Key not avaible: should not happen
           io:format("Should not happen (Key not avaible) ~n"),
           core(Store,Buffer) %% TODO:
       end;
     {gc,ResponsePid,Uid} ->
-      ResponsePid ! {ok,gc,Uid},
-      NStoreList = clean_store(dict:to_list(Store)),
+      NStoreList = clean_store(dict:to_list(Store)), %% try to clean the store
       NStore = dict:from_list(NStoreList),
+      ResponsePid ! {ok,gc,Uid}, %% send ok message to tmanager
       %%io:format("Do gc~n")
       core(NStore,Buffer);
     {clean} -> %% Message from timer to clean buffer => restart function
       io:format("Clean Buffer"),
       core(Store,Buffer);
-    {exit} ->
+    {exit} -> %% stop data store
       io:format("Datastore terminated ~n")
   end
 .
 
+%%
+%% Function used by the core function to try to emtpy the Buffer of waiting snapshot_reads
+%%
+%% Returns: Buffer with less or equal size as before
+%%
 tryEmpty(Buffer,Store) ->
   case Buffer of
     [] ->
@@ -143,7 +160,11 @@ tryEmpty(Buffer,Store) ->
   end
 .
 
-
+%%
+%% Function used by the core function to send a clean message after some defined time (Milliseconds)
+%%  which is the time needed before a snapshot can be read. sending the clean command will force the
+%%  core function to try to empty the buffer of waiting snapshot_reads
+%%
 timerClean(DataCorePid,Milliseconds) ->
   case timer:send_after(Milliseconds,DataCorePid,{clean}) of
     {ok,Tref} -> Tref;
@@ -152,7 +173,10 @@ timerClean(DataCorePid,Milliseconds) ->
 .
 
 
-%% Takes the List [{Key,History}{Key1,History1}...]
+
+%%
+%% Function called by core function when garbage collection should be done
+%%  and return a new store with less or equal values
 %%
 clean_store(Store) ->
   case Store of
