@@ -1,0 +1,18 @@
+up item_1 100
+up item_2 200
+up item_3 300
+up item_4 400
+up item_5 500
+up item_6 600
+up item_1 700
+up item_2 800
+up item_3 900
+up item_4 1000
+up item_5 1100
+up item_6 1200
+sleep 500
+read item_1
+up item_1 9999
+gc
+sleep 100
+read item_1 item_2 item_6

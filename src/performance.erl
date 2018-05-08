@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 22. Apr 2018 11:53
 %%%-------------------------------------------------------------------
--module(performanceClient).
+-module(performance).
 -author("gillonb").
 
 %% API
@@ -24,7 +24,7 @@ start(N,ManagerPid) ->
 
 run(N,P,ManagerPid) ->
   if (N /= 0) ->
-    spawn(performanceClient,time_exec,[P,ManagerPid]),
+    spawn(performance,time_exec,[P,ManagerPid]),
     run(N-1,P,ManagerPid);
     true ->
       ok

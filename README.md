@@ -12,9 +12,10 @@
  - bin/ 			: compiled object codes of erlang source files
  - Makefile			: makefile to clean and build the erlang code
  - README			: this file
- - datastore.pdf	: the instructions file
+ - doc/datastore.pdf: the pdf instructions file
  - launch.sh		: script to launch distributed storage service
  - parser.sh        : script to launch the parser function on an input file
+ - report.pdf       : pdf file containing our report
 
 ### MAKEFILE
  - clean	: remove all compiled object files from bin/
@@ -22,7 +23,7 @@
  - service	: compile only the erlang files from src/ to bin/ that are needed by the distributed storage service
 
 ### Execute/Run
- - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a system, send the commands (INPUTFILE) to it, store the result in a file (OUTPUTFILE) and stop the system
+ - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a distributed storage system localy, send the commands (INPUTFILE) to it, store the result in a file (OUTPUTFILE) and stop the system
  
  
 ### ERLANG MODULES
