@@ -13,7 +13,7 @@
  - Makefile			: makefile to clean and build the erlang code
  - README			: this file
  - doc/datastore.pdf: the pdf instructions file
- - launch.sh		: script to launch distributed storage service
+ - launch.sh		: script to launch live nodes of transactional manager and datastore
  - parser.sh        : script to launch the parser function on an input file
  - report.pdf       : pdf file containing our report
 
@@ -24,7 +24,7 @@
 
 ### Execute/Run
  - Use <./parser.sh INPUTFILE OUTPUTFILE> to launch a distributed storage system localy, send the commands (INPUTFILE) to it, store the result in a file (OUTPUTFILE) and stop the system
- 
+ - Use <./launch.sh > to see the explaination and arguments required for launching live nodes
  
 ### Erlang Modules
  - app			: module that can do update, snapshot_read and gc on a database when a transaction manager is provided
@@ -32,11 +32,3 @@
  - tmanager		: module containing the code for the transaction manager 
  - datastore	: module containing the code for the datastore
  - performance  : module containing the code for testing and finding the performance of our system
-
-
-### Exexute/Run ou system
- - Open an erlang shell. to start each module, run the start function with the correct arguments.
-    You should first launch the datastore , followed by a transactional manager. 
-    After that you can use the app module functions to interact with the transactional manager.
- 
- - For live nodes, you should run the 

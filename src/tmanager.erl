@@ -25,16 +25,15 @@ start_shell(ListStrArg) ->
       Pid = list_to_atom(lists:nth(1,ListStrArg)),
       Node = list_to_atom(lists:nth(2,ListStrArg)),
       Name = list_to_atom(lists:nth(3,ListStrArg)),
-      S = net_kernel:connect(Node),
       io:format("~n# tmanager (~p) running on node ~p ~n",[Name,node()]),
-      io:format("# Node connected to database node: ~p~n",[S]),
       case Node of
         none ->
           start(Pid,Name);
         _Other ->
-          start({Pid,Node},Name)
+          _R = start_node(Node,Pid,Name)
       end
-  end
+  end,
+  done
 .
 
 
@@ -51,8 +50,7 @@ start(DatastorePid,Name) ->
       R = spawn(tmanager,response,[Dd]),
       Core = spawn(tmanager,queries,[0,R,ListData]),
       _F = register(Name,Core)
-  end,
-  done
+  end
 .
 
 %% Function to run in a live node to connect to other live node
@@ -63,13 +61,12 @@ start(DatastorePid,Name) ->
 %%
 start_node(DatastoreNode,DataStoreName,Name) ->
   Succes = net_kernel:connect(DatastoreNode),
-  io:format("~p~n",[Succes]),
+  io:format("# Node connected to database node: ~p~n",[Succes]),
   if Succes ->
       io:format("Connected to node ~p~n",[DatastoreNode]),
       start({DataStoreName,DatastoreNode},Name);
     true ->
-      io:format("Connect failed to ~p ~n",[DatastoreNode]),
-      done
+      io:format("Connect failed to ~p ~n",[DatastoreNode])
   end
 .
 
